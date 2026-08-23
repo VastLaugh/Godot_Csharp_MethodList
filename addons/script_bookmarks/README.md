@@ -1,4 +1,4 @@
-# Godot_Plugin_Manager_Shortcut
+# Godot Script Editor Bookmarks
 
 ## [ZH] Godot脚本编辑器书签插件
 
