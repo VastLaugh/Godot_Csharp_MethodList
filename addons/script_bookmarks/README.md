@@ -12,5 +12,5 @@
 - After enabling the plugin, you can mark with `#` + `your tag` + `:`, for example: `# DO: Jump here`.
 - Custom tags must be on a separate line to work properly.
 
-!["image1"](./addons/script_bookmarks/Image/image.png)
-!["image2"](./addons/script_bookmarks/Image/image2.png)
+!["image1"](./Image/image.png)
+!["image2"](./Image/image2.png)
