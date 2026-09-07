@@ -2,7 +2,7 @@
 * text=auto eol=lf
 
 # Only include the addons folder when downloading from the Asset Library.
-/**        export-ignore
-/addons    !export-ignore
-/addons/script_bookmarks !export-ignore
-/addons/script_bookmarks/** !export-ignore
+#/**        export-ignore
+#/addons    !export-ignore
+#/addons/script_bookmarks !export-ignore
+#/addons/script_bookmarks/** !export-ignore
