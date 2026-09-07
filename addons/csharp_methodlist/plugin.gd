@@ -11,7 +11,7 @@ const BUTTON_HEIGHT = 26
 const DOCK_TITLE = "C# Methods"
 
 # Vertical separation between lines
-const LINE_SEPARATION = 2
+const LINE_SEPARATION = 1
 
 # The exact curly bracket nesting depth where methods reside.
 # Depth 1 = Directly inside the first outer curly bracket block (e.g., a top-level Class).
