@@ -42,9 +42,9 @@ var method_regex: RegEx
 
 
 func _enter_tree():
-	# Regex pattern to match C# method signatures
-	# Capture Group 1 extracts the pure method name
-	var pattern = "(?:public|private|protected|internal|protected internal|private protected)?\\s*(?:static|virtual|override|abstract|async|unsafe)?\\s*(?:[a-zA-Z0-9_\\[\\]<>]+)\\s+([a-zA-Z0-9_]+)\\s*\\([^\\)]*\\)"
+	# Regex pattern updated to match C# method signatures up to the opening parenthesis,
+	# allowing multi-line/new-line delineated arguments to be properly detected.
+	var pattern = "(?:public|private|protected|internal|protected internal|private protected)?\\s*(?:static|virtual|override|abstract|async|unsafe)?\\s*(?:[a-zA-Z0-9_\\[\\]<>]+)\\s+([a-zA-Z0-9_]+)\\s*\\("
 	method_regex = RegEx.new()
 	method_regex.compile(pattern)
 
@@ -141,7 +141,6 @@ func _delayed_update():
 			_update_bookmarks()
 
 
-
 func _on_text_changed():
 	_update_bookmarks()
 
@@ -226,7 +225,7 @@ func _update_bookmarks():
 		if comment_idx != -1:
 			clean_line = clean_line.left(comment_idx)
 
-		# 2. Check if a method signature matches. 
+		# 2. Check if a method signature starts. 
 		# We check if it matches while *strictly* at the target brace depth level.
 		if current_brace_depth == TARGET_DEPTH:
 			var result = method_regex.search(clean_line)
