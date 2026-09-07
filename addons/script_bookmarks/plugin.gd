@@ -2,55 +2,53 @@
 extends EditorPlugin
 
 # ============================================================
-#  >>> 用户可配置区域 <<<
+#  >>> USER CONFIGURABLE REGION <<<
 # ============================================================
-# 书签关键词（支持多个）
-const BOOKMARK_KEYWORDS = ["bookmark", "DO"]
+# Fixed button height (pixels)
+const BUTTON_HEIGHT = 26
 
-# 行注释前缀（支持 #）
-const COMMENT_PREFIXES = ["#"]
+# Dock panel title
+const DOCK_TITLE = "C# Methods"
 
-# 按钮固定高度（像素）
-const BUTTON_HEIGHT = 30
+# Vertical separation between lines
+const LINE_SEPARATION = 2
 
-# 停靠面板标题
-const DOCK_TITLE = "标记跳转"
+# The exact curly bracket nesting depth where methods reside.
+# Depth 1 = Directly inside the first outer curly bracket block (e.g., a top-level Class).
+const TARGET_DEPTH = 1
 
-# 按钮间距（水平）和行间距
-const BUTTON_SEPARATION = 8
-const LINE_SEPARATION = 6
-
-# 按钮样式颜色（可微调）
-const BORDER_COLOR = Color(0.6, 0.6, 0.6, 0.8)
-const BG_COLOR = Color(0.15, 0.15, 0.15, 0.4)
-const HOVER_BORDER = Color(0.8, 0.8, 0.9, 1.0)
-const HOVER_BG = Color(0.25, 0.25, 0.3, 0.6)
-const PRESSED_BORDER = Color(0.4, 0.6, 1.0, 0.9)
-const PRESSED_BG = Color(0.1, 0.2, 0.4, 0.7)
-const CORNER_RADIUS = 4
+# Button style colors (flat style matching the native editor)
+const BORDER_COLOR = Color(0, 0, 0, 0) # No border by default
+const BG_COLOR = Color(0, 0, 0, 0)     # Transparent by default
+const HOVER_BORDER = Color(1, 1, 1, 0.05)
+const HOVER_BG = Color(1, 1, 1, 0.08)
+const PRESSED_BORDER = Color(1, 1, 1, 0.1)
+const PRESSED_BG = Color(1, 1, 1, 0.15)
+const TEXT_COLOR = Color(0.85, 0.85, 0.85, 1.0)
+const HOVER_TEXT_COLOR = Color(1.0, 1.0, 1.0, 1.0)
+const CORNER_RADIUS = 2
 # ============================================================
 
 var dock: EditorDock
 var bookmarks_panel: PanelContainer
 var scroll_container: ScrollContainer
-var button_flow: FlowContainer
+var button_list: VBoxContainer
 
 var current_script: Script = null
 var current_editor: ScriptEditorBase = null
 var current_base_editor: CodeEdit = null
 
-var bookmark_regex: RegEx
+var method_regex: RegEx
 
 
 func _enter_tree():
-	# 动态构建正则表达式（使用字符串 join 方法）
-	var prefix_str = "(" + "|".join(COMMENT_PREFIXES) + ")"
-	var keywords_str = "(" + "|".join(BOOKMARK_KEYWORDS) + ")"
-	var pattern = "^\\s*" + prefix_str + "\\s*" + keywords_str + "\\s*:\\s*(.+)$"
-	bookmark_regex = RegEx.new()
-	bookmark_regex.compile(pattern)
+	# Regex pattern to match C# method signatures
+	# Capture Group 1 extracts the pure method name
+	var pattern = "(?:public|private|protected|internal|protected internal|private protected)?\\s*(?:static|virtual|override|abstract|async|unsafe)?\\s*(?:[a-zA-Z0-9_\\[\\]<>]+)\\s+([a-zA-Z0-9_]+)\\s*\\([^\\)]*\\)"
+	method_regex = RegEx.new()
+	method_regex.compile(pattern)
 
-	# 创建停靠面板
+	# Create dock panel
 	dock = EditorDock.new()
 	dock.title = DOCK_TITLE
 	dock.default_slot = EditorDock.DOCK_SLOT_BOTTOM
@@ -66,13 +64,12 @@ func _enter_tree():
 	scroll_container.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	bookmarks_panel.add_child(scroll_container)
 
-	button_flow = FlowContainer.new()
-	button_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button_flow.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	button_flow.alignment = FlowContainer.ALIGNMENT_BEGIN
-	button_flow.add_theme_constant_override("separation", BUTTON_SEPARATION)
-	button_flow.add_theme_constant_override("line_separation", LINE_SEPARATION)
-	scroll_container.add_child(button_flow)
+	# Initialize vertical list container
+	button_list = VBoxContainer.new()
+	button_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	button_list.add_theme_constant_override("separation", LINE_SEPARATION)
+	scroll_container.add_child(button_list)
 
 	dock.add_child(bookmarks_panel)
 	add_dock(dock)
@@ -107,6 +104,12 @@ func _on_script_changed(script: Script):
 	current_base_editor = null
 
 	current_script = script
+	
+	# Guard clause: Verify that the current script exists and is a C# script (.cs)
+	if not current_script or current_script.resource_path.get_extension().to_lower() != "cs":
+		_clear_list()
+		return
+
 	var script_editor = get_editor_interface().get_script_editor()
 	current_editor = script_editor.get_current_editor()
 
@@ -120,10 +123,15 @@ func _on_script_changed(script: Script):
 		else:
 			call_deferred("_delayed_update")
 	else:
-		_update_bookmarks()
+		_clear_list()
 
 
 func _delayed_update():
+	# Re-verify the current script extension before processing deferred updates
+	if not current_script or current_script.resource_path.get_extension().to_lower() != "cs":
+		_clear_list()
+		return
+
 	if current_editor:
 		var base = current_editor.get_base_editor()
 		if base:
@@ -133,19 +141,34 @@ func _delayed_update():
 			_update_bookmarks()
 
 
+
 func _on_text_changed():
 	_update_bookmarks()
 
 
+func _clear_list():
+	for child in button_list.get_children():
+		button_list.remove_child(child)
+		child.free()
+	bookmarks_panel.queue_redraw()
+
+
 func _create_styled_button(text: String, line: int) -> Button:
 	var btn = Button.new()
-	btn.text = text
-	btn.tooltip_text = "跳转到第 %d 行" % line
-	btn.flat = false
+	btn.text = " Line %d:  %s" % [line, text]
+	btn.tooltip_text = "Jump to line %d" % line
+	btn.flat = true 
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT 
+	btn.clip_text = true 
 	btn.connect("pressed", Callable(self, "_on_bookmark_pressed").bind(line))
 
 	btn.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
-	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL 
+
+	btn.add_theme_color_override("font_color", TEXT_COLOR)
+	btn.add_theme_color_override("font_hover_color", HOVER_TEXT_COLOR)
+	btn.add_theme_color_override("font_focus_color", HOVER_TEXT_COLOR)
+	btn.add_theme_color_override("font_pressed_color", HOVER_TEXT_COLOR)
 
 	var style = StyleBoxFlat.new()
 	style.border_width_left = 1
@@ -158,12 +181,17 @@ func _create_styled_button(text: String, line: int) -> Button:
 	style.corner_radius_top_right = CORNER_RADIUS
 	style.corner_radius_bottom_left = CORNER_RADIUS
 	style.corner_radius_bottom_right = CORNER_RADIUS
+	
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	
 	btn.add_theme_stylebox_override("normal", style)
 
 	var hover_style = style.duplicate()
 	hover_style.border_color = HOVER_BORDER
 	hover_style.bg_color = HOVER_BG
 	btn.add_theme_stylebox_override("hover", hover_style)
+	btn.add_theme_stylebox_override("focus", hover_style) 
 
 	var pressed_style = style.duplicate()
 	pressed_style.border_color = PRESSED_BORDER
@@ -174,9 +202,7 @@ func _create_styled_button(text: String, line: int) -> Button:
 
 
 func _update_bookmarks():
-	for child in button_flow.get_children():
-		button_flow.remove_child(child)
-		child.free()
+	_clear_list()
 
 	if not current_base_editor:
 		return
@@ -187,20 +213,40 @@ func _update_bookmarks():
 
 	var lines = source.split("\n")
 	var bookmarks = []
+	
+	var current_brace_depth = 0
+	var keywords = ["if", "for", "foreach", "while", "switch", "using", "catch"]
 
 	for i in range(lines.size()):
-		var result = bookmark_regex.search(lines[i])
-		if result:
-			var text = result.get_string(3).strip_edges()  # 捕获组3 = 冒号后的内容
-			if not text.is_empty():
-				bookmarks.append({"line": i + 1, "text": text})
+		var raw_line = lines[i]
+		
+		# 1. Strip comments out entirely to prevent false brace level calculations
+		var clean_line = raw_line
+		var comment_idx = clean_line.find("//")
+		if comment_idx != -1:
+			clean_line = clean_line.left(comment_idx)
+
+		# 2. Check if a method signature matches. 
+		# We check if it matches while *strictly* at the target brace depth level.
+		if current_brace_depth == TARGET_DEPTH:
+			var result = method_regex.search(clean_line)
+			if result:
+				var method_name = result.get_string(1).strip_edges()
+				if not method_name.is_empty() and not method_name in keywords:
+					bookmarks.append({"line": i + 1, "text": method_name})
+
+		# 3. Track depth brackets across lines to evaluate the current scope
+		for char in clean_line:
+			if char == "{":
+				current_brace_depth += 1
+			elif char == "}":
+				current_brace_depth = max(0, current_brace_depth - 1)
 
 	for bm in bookmarks:
 		var btn = _create_styled_button(bm.text, bm.line)
-		button_flow.add_child(btn)
+		button_list.add_child(btn)
 
 	bookmarks_panel.queue_redraw()
-	button_flow.queue_sort()
 
 
 func _on_bookmark_pressed(line: int):
