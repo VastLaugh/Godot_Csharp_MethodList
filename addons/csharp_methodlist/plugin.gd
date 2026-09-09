@@ -200,6 +200,12 @@ func _create_styled_button(text: String, line: int) -> Button:
 	return btn
 
 
+func _on_bookmark_pressed(line: int):
+	if current_base_editor:
+		current_base_editor.set_caret_line(line - 1)
+		current_base_editor.grab_focus()
+
+
 func _update_bookmarks():
 	_clear_list()
 
@@ -219,11 +225,49 @@ func _update_bookmarks():
 	for i in range(lines.size()):
 		var raw_line = lines[i]
 		
-		# 1. Strip comments out entirely to prevent false brace level calculations
-		var clean_line = raw_line
-		var comment_idx = clean_line.find("//")
-		if comment_idx != -1:
-			clean_line = clean_line.left(comment_idx)
+		# Build a clean line char-by-char, ignoring text inside string literals 
+		# and ignoring everything after an actual comment starts.
+		var clean_line = ""
+		var inside_string = false
+		var escaped = false
+		
+		var j = 0
+		while j < raw_line.length():
+			var char = raw_line[j]
+			
+			if escaped:
+				escaped = false
+				j += 1
+				continue
+				
+			if char == "\\":
+				escaped = true
+				j += 1
+				continue
+				
+			if char == "\"":
+				inside_string = not inside_string
+				clean_line += char
+				j += 1
+				continue
+				
+			if not inside_string:
+				# Look ahead for a single line comment //
+				if char == "/" and j + 1 < raw_line.length() and raw_line[j + 1] == "/":
+					break # Halt parsing this line; the rest is a comment
+				
+				# Keep tracked structural braces
+				if char == "{" or char == "}":
+					clean_line += char
+				elif char.is_empty() or char == " " or char == "\t" or char.is_valid_identifier() or char in ["(", ")", "<", ">", "[", "]", ",", ";", "*"]:
+					# Keep normal coding characters for method regex signature matching
+					clean_line += char
+			else:
+				# While inside a string, we strip out structural characters 
+				# so that "res://..." or text brackets don't trigger brace tracking.
+				if char != "{" and char != "}":
+					clean_line += " " # Replace string content with padding space
+			j += 1
 
 		# 2. Check if a method signature starts. 
 		# We check if it matches while *strictly* at the target brace depth level.
@@ -246,12 +290,3 @@ func _update_bookmarks():
 		button_list.add_child(btn)
 
 	bookmarks_panel.queue_redraw()
-
-
-func _on_bookmark_pressed(line: int):
-	var editor = get_editor_interface().get_script_editor().get_current_editor()
-	if editor:
-		var base = editor.get_base_editor()
-		if base:
-			base.set_caret_line(line - 1)
-			base.center_viewport_to_caret()
