@@ -225,49 +225,18 @@ func _update_bookmarks():
 	for i in range(lines.size()):
 		var raw_line = lines[i]
 		
-		# Build a clean line char-by-char, ignoring text inside string literals 
-		# and ignoring everything after an actual comment starts.
-		var clean_line = ""
-		var inside_string = false
-		var escaped = false
-		
-		var j = 0
-		while j < raw_line.length():
-			var char = raw_line[j]
-			
-			if escaped:
-				escaped = false
-				j += 1
-				continue
-				
-			if char == "\\":
-				escaped = true
-				j += 1
-				continue
-				
-			if char == "\"":
-				inside_string = not inside_string
-				clean_line += char
-				j += 1
-				continue
-				
-			if not inside_string:
-				# Look ahead for a single line comment //
-				if char == "/" and j + 1 < raw_line.length() and raw_line[j + 1] == "/":
-					break # Halt parsing this line; the rest is a comment
-				
-				# Keep tracked structural braces
-				if char == "{" or char == "}":
-					clean_line += char
-				elif char.is_empty() or char == " " or char == "\t" or char.is_valid_identifier() or char in ["(", ")", "<", ">", "[", "]", ",", ";", "*"]:
-					# Keep normal coding characters for method regex signature matching
-					clean_line += char
+		# 1. Strip comments out entirely to prevent false brace level calculations.
+		# Skips over double-slashes that form part of an inline path protocol string "://"
+		var clean_line = raw_line
+		var comment_idx = clean_line.find("//")
+		while comment_idx != -1:
+			if comment_idx > 0 and clean_line[comment_idx - 1] == ":":
+				# This is a '://' URL string token, check for a real comment further down the line
+				comment_idx = clean_line.find("//", comment_idx + 2)
 			else:
-				# While inside a string, we strip out structural characters 
-				# so that "res://..." or text brackets don't trigger brace tracking.
-				if char != "{" and char != "}":
-					clean_line += " " # Replace string content with padding space
-			j += 1
+				# Real single line comment marker found
+				clean_line = clean_line.left(comment_idx)
+				break
 
 		# 2. Check if a method signature starts. 
 		# We check if it matches while *strictly* at the target brace depth level.
